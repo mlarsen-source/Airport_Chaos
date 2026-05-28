@@ -8,7 +8,10 @@ struct Aircraft {
 }
 
 #[derive(Component)]
-struct FuelTruck;
+struct FuelTruck {
+    destination: Option<Vec2>,
+    speed: f32,
+}
 
 fn main() {
     App::new()
@@ -21,7 +24,7 @@ fn main() {
             ..default()
         }))
         .add_systems(Startup, setup)
-        .add_systems(Update, taxi_aircraft)
+        .add_systems(Update, (taxi_aircraft, move_fuel_truck, handle_click))
         .run();
 }
 
@@ -63,9 +66,12 @@ fn setup(mut commands: Commands) {
         Transform::from_xyz(100.0, 360.0, 2.0),
     ));
 
-    // Fuel truck starts parked near the terminal
+    // Fuel truck - player controlled
     commands.spawn((
-        FuelTruck,
+        FuelTruck {
+            destination: None,
+            speed: 120.0,
+        },
         Sprite {
             color: Color::srgb(0.95, 0.8, 0.1),
             custom_size: Some(Vec2::new(30.0, 20.0)),
@@ -92,14 +98,59 @@ fn taxi_aircraft(
             transform.translation.x = aircraft.target.x;
             transform.translation.y = aircraft.target.y;
             aircraft.parked = true;
-            // Turn blue when parked to show it's ready for service
             sprite.color = Color::srgb(0.6, 0.7, 0.95);
         } else {
             let direction = diff.normalize();
-            // Rotate to face direction of travel
             transform.rotation =
                 Quat::from_rotation_z(direction.to_angle() - std::f32::consts::FRAC_PI_2);
             let delta = direction * aircraft.speed * time.delta_secs();
+            transform.translation += delta.extend(0.0);
+        }
+    }
+}
+
+fn handle_click(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    camera_q: Query<(&Camera, &GlobalTransform)>,
+    mut truck_q: Query<&mut FuelTruck>,
+) {
+    if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    let window = windows.single();
+    let (camera, camera_transform) = camera_q.single();
+
+    if let Some(cursor_pos) = window.cursor_position() {
+        if let Ok(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+            for mut truck in &mut truck_q {
+                truck.destination = Some(world_pos);
+            }
+        }
+    }
+}
+
+fn move_fuel_truck(
+    time: Res<Time>,
+    mut query: Query<(&mut FuelTruck, &mut Transform)>,
+) {
+    for (mut truck, mut transform) in &mut query {
+        let Some(dest) = truck.destination else { continue };
+
+        let current = transform.translation.truncate();
+        let diff = dest - current;
+        let distance = diff.length();
+
+        if distance < 3.0 {
+            transform.translation.x = dest.x;
+            transform.translation.y = dest.y;
+            truck.destination = None;
+        } else {
+            let direction = diff.normalize();
+            transform.rotation =
+                Quat::from_rotation_z(direction.to_angle() - std::f32::consts::FRAC_PI_2);
+            let delta = direction * truck.speed * time.delta_secs();
             transform.translation += delta.extend(0.0);
         }
     }
