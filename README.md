@@ -1,4 +1,4 @@
-# Airport Ramp Chaos
+# Airport Chaos
 
 A top-down airport ramp management game built in [Bevy](https://bevyengine.org/) (Rust).
 
@@ -46,27 +46,31 @@ Clicks on the HUD bar and buttons do **not** redirect the truck.
 
 - **Runways 1 & 2** (horizontal) are open from the start.
 - **Runway 3** (left, vertical) opens after **10 planes** are fueled.
-- **Runway 4** (right, vertical) opens after **20 planes** are fueled.
+- **Runway 4** (right, vertical) opens after **25 planes** are fueled.
 
 When a runway opens, its center-line dashes turn **yellow** and its parking-stand rectangle turns **white**.
 
+As runways open, payouts also scale up to keep the game profitable against the rising plane volume.
+
 ### Plane values
 
-| Color  | Payout |
-| ------ | -----: |
-| Azure  |    $60 |
-| Blue   |    $90 |
-| Yellow |   $120 |
-| Orange |   $150 |
-| Red    |   $175 |
+Base payout is scaled by a multiplier (+5% at 3rd runway, +10.25% at 4th), rounded up to the nearest $5, then a flat per-plane bonus is added (+$20 at 3rd, +$30 at 4th).
 
-### Truck upgrades (5 levels, $500 → $2500)
+| Color  | 1–2 runways | 3rd open | 4th open |
+| ------ | ----------: | -------: | -------: |
+| Azure  |         $60 |      $85 |     $100 |
+| Blue   |         $90 |     $115 |     $130 |
+| Yellow |        $120 |     $150 |     $165 |
+| Orange |        $150 |     $180 |     $200 |
+| Red    |        $175 |     $205 |     $225 |
+
+### Truck upgrades (8 levels, $500 → $4000)
 
 Each upgrade:
 
-- Increases truck **movement speed** (130 → 275 px/s)
-- Decreases **fueling time** (2.5 → 1.0 s per plane)
-- Changes the truck's **color and size** (gray → yellow → orange → red → purple → green)
+- Increases truck **movement speed** (130 → 395 px/s)
+- Decreases **fueling time** (2.5 → 0.6 s per plane)
+- Changes the truck's **color and size** (gray → yellow → orange → red → purple → green → cyan → pink → gold)
 - Preserves the truck's current destination and active fueling — a moving or fueling truck keeps doing its job through the upgrade
 
 ### Win / Lose
@@ -103,34 +107,27 @@ Each upgrade:
 ## Phase 3 — Continuous Mode (Complete)
 
 - [x] Continuous play to **50 planes** (no discrete levels)
-- [x] Four runways with progressive activation at 10 and 20 fueled
+- [x] Four runways with progressive activation at 10 and 25 fueled
 - [x] Spawn interval tightens as the player progresses
-- [x] Truck upgrades (5 tiers) — faster movement + faster fueling, state-preserving (destination + fueling carry through)
+- [x] Truck upgrades (8 tiers) — faster movement + faster fueling, state-preserving (destination + fueling carry through)
+- [x] Tiered payout bonuses (multiplier + flat) that scale as more runways open
 - [x] Partial fueling persists on the aircraft when the truck is redirected
 - [x] Crashes between taxiing and parked aircraft (with the truck caught in between)
 - [x] Win screen with continuous fireworks
 - [x] Visual polish — windshield + side windows, vertical "FUEL" label painted on the tank (rotates with the truck), contrast-tuned label color (red/yellow), pointer cursor on UI hover, distinct orange upgrade button, "COMING SOON" markers on inactive runways
+- [x] Detailed hangars (corrugated arch, sliding door panels, red trim, lit windows) and trees scattered through the grass areas
 - [x] UI clicks no longer redirect the truck
 
 ---
 
-## Phase 4 — Refactor & Performance (Planned, Final Phase)
+## Phase 4 — Refactor & Performance (Complete)
 
-**Ground rule: no change in Phase 4 may alter gameplay, balance, visuals, or behavior. If a refactor carries any risk of breaking something, it is skipped.** Phase 4 is a code-quality and organization pass only.
+**Ground rule: no change in Phase 4 altered gameplay, balance, visuals, or behavior.** Phase 4 was a code-quality and organization pass only.
 
-- [ ] Split `main.rs` into modules (`hud`, `truck`, `aircraft`, `runway`, `state`, `setup`) — pure code-motion, no logic change
-- [ ] Group existing magic numbers into named constants beside their current use sites
-- [ ] Remove dead code and unused imports surfaced by the compiler
-- [ ] Consolidate duplicated `Without<>` filter chains where it is a mechanical rewrite
-- [ ] General readability pass — naming and function size only; no algorithmic changes
-- [ ] `cargo check` and a manual play-through must pass after every individual change
-
-Explicitly **out of scope** for Phase 4 (deferred or dropped):
-
-- Re-architecting the spawn loop or any system ordering
-- Replacing `Query` patterns with `ParamSet` unless the rewrite is purely mechanical and risk-free
-- Particle system rewrites
-- Any change to the HUD update path that alters what is rendered
+- [x] Extracted all components, marker types, and `GameState` into `src/components.rs`
+- [x] Introduced query type aliases (`TruckIconFuelFilter`, `UpgTruckFuelFilter`, `WorldTruckFuelFilter`, `TruckLabelFilter`) to satisfy clippy `type_complexity`
+- [x] Collapsed duplicated `if`/`else` branches surfaced by clippy `if_same_then_else`
+- [x] `cargo check` clean (zero warnings) after the split
 
 ---
 

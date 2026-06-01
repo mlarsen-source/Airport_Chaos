@@ -2,7 +2,15 @@ use bevy::prelude::*;
 use bevy::winit::cursor::CursorIcon;
 use bevy::window::SystemCursorIcon;
 use bevy::window::PrimaryWindow;
-use std::collections::VecDeque;
+
+mod components;
+use components::*;
+
+// ── Query filter aliases (clippy type_complexity) ─────────────────────────
+type TruckIconFuelFilter = (With<TruckIconFuel>, Without<UpgTruckFuel>, Without<WorldTruckFuel>);
+type UpgTruckFuelFilter  = (With<UpgTruckFuel>, Without<TruckIconFuel>, Without<WorldTruckFuel>);
+type WorldTruckFuelFilter = (With<WorldTruckFuel>, Without<TruckIconFuel>, Without<UpgTruckFuel>);
+type TruckLabelFilter = (With<PlaneCountText>, Without<FuelTruck>);
 
 // ── Layout ─────────────────────────────────────────────────────────────────
 const VERT_X: f32 = 360.0;
@@ -21,121 +29,19 @@ const RUNWAY_STANDS: [Vec2; 4] = [
     Vec2::new( VERT_X,  0.0),
 ];
 
-const TRUCK_UPGRADE_COSTS: [f32; 5]  = [500.0, 1000.0, 1500.0, 2000.0, 2500.0];
-const FUEL_DURATIONS: [f32; 6]       = [2.5, 2.2, 1.9, 1.6, 1.3, 1.0];
-const TRUCK_SPEEDS:    [f32; 6]      = [130.0, 155.0, 180.0, 210.0, 240.0, 275.0];
+const MAX_TRUCK_LEVEL: u32 = 8;
+const TRUCK_UPGRADE_COSTS: [f32; 8] = [500.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0, 3500.0, 4000.0];
+const FUEL_DURATIONS:    [f32; 9]  = [2.5, 2.2, 1.9, 1.6, 1.3, 1.0, 0.85, 0.7, 0.6];
+const TRUCK_SPEEDS:      [f32; 9]  = [130.0, 155.0, 180.0, 210.0, 240.0, 275.0, 310.0, 350.0, 395.0];
 const FUEL_RADIUS: f32 = 72.0;
 const TRUCK_START: Vec2 = Vec2::ZERO;
 const SPAWN_JITTER: f32 = 4.0;     // random ±2 s around the spawn interval
 const WIN_PLANES: u32 = 50;
 const RUNWAY3_OPEN_AT: u32 = 10;   // 3rd runway opens after this many planes fueled
-const RUNWAY4_OPEN_AT: u32 = 20;   // 4th runway opens after this many planes fueled
+const RUNWAY4_OPEN_AT: u32 = 25;   // 4th runway opens after this many planes fueled
 const BAR_WIDTH: f32 = 60.0;
 const BAR_Y0: f32 = HORIZ_Y + HORIZ_H / 2.0 + 15.0;
 const BAR_Y1: f32 = -(HORIZ_Y + HORIZ_H / 2.0 + 15.0);
-
-// ── Components ─────────────────────────────────────────────────────────────
-#[derive(Component)]
-struct Aircraft {
-    waypoints: VecDeque<(Vec2, f32)>,
-    seg_start: Vec2,
-    seg_start_scale: f32,
-    speed: f32,
-    parked: bool,
-    departing: bool,
-    runway: u32,
-    base_value: f32,
-    park_age: f32,
-    will_collide: bool,
-    fuel_progress: f32, // 0.0–1.0; persists when truck leaves mid-fuel
-}
-
-#[derive(Component)]
-struct FuelTruck {
-    destination: Option<Vec2>,
-    speed: f32,
-    fueling: bool,
-}
-
-#[derive(Component)] struct CrashText;
-#[derive(Component)] struct LevelCompleteText;
-#[derive(Component)] struct ProceedButton;
-#[derive(Component)] struct RestartButton;
-#[derive(Component)] struct RestartButtonText;
-#[derive(Component)] struct TimerText;
-#[derive(Component)] struct MoneyText;
-#[derive(Component)] struct TruckUpgradeText;
-#[derive(Component)] struct TruckUpgradeButton;
-#[derive(Component)] struct TruckUpgradeBtnText;
-#[derive(Component)] struct TruckIconBody;   // current-level truck body in bar
-#[derive(Component)] struct TruckIconCab;    // current-level truck cab in bar
-#[derive(Component)] struct TruckIconFuel;   // "FUEL" label on the current truck icon
-#[derive(Component)] struct UpgTruckFuel;    // "FUEL" label on the upgrade preview truck icon
-#[derive(Component)] struct WorldTruckFuel;  // "FUEL" label on the in-game truck
-#[derive(Component)] struct ComingSoonLabel(u32); // runway index (2 or 3); hidden when that runway opens
-#[derive(Component)] struct VerticalRunwayDash(u32); // runway index (2 or 3)
-#[derive(Component)] struct ParkingStandSide(u32);   // runway index (2 or 3)
-#[derive(Component)] struct UpgTruckBody;    // next-level truck body in upgrade button
-#[derive(Component)] struct UpgTruckCab;     // next-level truck cab in upgrade button
-#[derive(Component)] struct PlaneCountText;
-
-#[derive(Component)]
-struct RunwayFuelBar { runway: u32, is_fill: bool }
-
-#[derive(Component)]
-struct Particle {
-    velocity: Vec2,
-    lifetime: f32,
-    max_lifetime: f32,
-    r: f32, g: f32, b: f32,
-    scale_start: f32,
-    scale_end: f32,
-}
-
-// ── Game state ─────────────────────────────────────────────────────────────
-#[derive(Resource)]
-struct GameState {
-    crashed: bool,
-    money: f32,
-    truck_level: u32,
-    last_payout: f32,
-    planes_fueled: u32,
-    payout_flash: f32,
-    spawn_timers: [f32; 4],
-    active_runways: usize,   // 2 → 3 → 4 based on planes_fueled
-    crash_pos: Vec2,
-    crash_anim_spawned: bool,
-    rng_state: u32,
-    started: bool,
-    game_complete: bool,
-    firework_timer: f32,
-}
-
-impl Default for GameState {
-    fn default() -> Self {
-        Self {
-            crashed: false,
-            money: 0.0, truck_level: 0,
-            last_payout: 0.0, planes_fueled: 0,
-            payout_flash: 0.0,
-            spawn_timers: [0.0, 7.0, 0.0, 0.0],
-            active_runways: 2,
-            crash_pos: Vec2::ZERO,
-            crash_anim_spawned: false,
-            rng_state: 0x9E3779B9,
-            started: false,
-            game_complete: false,
-            firework_timer: 0.0,
-        }
-    }
-}
-
-impl GameState {
-    fn next_rand(&mut self) -> f32 {
-        self.rng_state = self.rng_state.wrapping_mul(1664525).wrapping_add(1013904223);
-        (self.rng_state >> 16) as f32 / 65535.0  // 0.0 ..= 1.0
-    }
-}
 
 // ── Approach / departure waypoints ─────────────────────────────────────────
 fn runway_approach(runway: u32) -> (Vec2, f32, Vec<(Vec2, f32)>) {
@@ -170,7 +76,10 @@ fn truck_level_colors(level: u32) -> (Color, Color) {
         2 => (Color::srgb(0.97, 0.62, 0.08), Color::srgb(0.85, 0.42, 0.04)),
         3 => (Color::srgb(0.92, 0.30, 0.08), Color::srgb(0.72, 0.18, 0.04)),
         4 => (Color::srgb(0.65, 0.12, 0.80), Color::srgb(0.46, 0.06, 0.58)),
-        _ => (Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
+        5 => (Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
+        6 => (Color::srgb(0.10, 0.78, 0.92), Color::srgb(0.05, 0.55, 0.70)),
+        7 => (Color::srgb(0.96, 0.48, 0.82), Color::srgb(0.70, 0.20, 0.55)),
+        _ => (Color::srgb(0.95, 0.80, 0.20), Color::srgb(0.78, 0.55, 0.08)),
     }
 }
 
@@ -184,7 +93,10 @@ fn truck_label_color(level: u32) -> Color {
         2 => RED,    // red on orange
         3 => YELLOW, // yellow on red
         4 => YELLOW, // yellow on purple
-        _ => YELLOW, // yellow on green / other
+        5 => YELLOW, // yellow on green
+        6 => RED,    // red on cyan
+        7 => YELLOW, // yellow on pink
+        _ => RED,    // red on gold
     }
 }
 
@@ -192,7 +104,7 @@ fn truck_label_color(level: u32) -> Color {
 // Tuned so the game stays winnable as the player upgrades their truck.
 fn spawn_interval_for_progress(fueled: u32) -> f32 {
     if      fueled <  RUNWAY3_OPEN_AT { 18.0 }   // 0–9, 2 runways
-    else if fueled <  RUNWAY4_OPEN_AT { 15.0 }   // 10–19, 3 runways
+    else if fueled <  RUNWAY4_OPEN_AT { 15.0 }   // 10–24, 3 runways
     else if fueled <  40              { 13.0 }   // 20–39, 4 runways
     else if fueled <  60              { 11.0 }
     else if fueled <  80              { 10.0 }
@@ -208,17 +120,14 @@ fn active_runways_for_progress(fueled: u32) -> usize {
 
 // Tank + cab colors for the NEXT upgrade level (shown as icon preview)
 fn truck_next_level_colors(current: u32) -> (Color, Color) {
-    match current + 1 {
-        1 => (Color::srgb(0.96, 0.88, 0.18), Color::srgb(0.90, 0.70, 0.05)),
-        2 => (Color::srgb(0.97, 0.62, 0.08), Color::srgb(0.85, 0.42, 0.04)),
-        3 => (Color::srgb(0.92, 0.30, 0.08), Color::srgb(0.72, 0.18, 0.04)),
-        4 => (Color::srgb(0.65, 0.12, 0.80), Color::srgb(0.46, 0.06, 0.58)),
-        5 => (Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
-        _ => (Color::srgb(0.28, 0.28, 0.30), Color::srgb(0.22, 0.22, 0.24)), // max
+    if current + 1 > MAX_TRUCK_LEVEL {
+        return (Color::srgb(0.28, 0.28, 0.30), Color::srgb(0.22, 0.22, 0.24)); // max
     }
+    truck_level_colors(current + 1)
 }
 
-// Color → base payout. Time bonus applied in check_fueling.
+// Color → base payout. The actual payout in check_fueling scales by
+// payout_multiplier_for_progress (1.0 / 1.05 / 1.1025) rounded up to $5.
 // Label shown in HUD payout flash.
 fn plane_color_info(idx: u8) -> (Color, f32, &'static str) {
     match idx % 5 {
@@ -230,12 +139,31 @@ fn plane_color_info(idx: u8) -> (Color, f32, &'static str) {
     }
 }
 
+// Payout multiplier escalates by 5% when the 3rd and 4th runways open.
+fn payout_multiplier_for_progress(fueled: u32) -> f32 {
+    if      fueled >= RUNWAY4_OPEN_AT { 1.05 * 1.05 }
+    else if fueled >= RUNWAY3_OPEN_AT { 1.05 }
+    else                              { 1.0 }
+}
+
+// Flat bonus added on top of the scaled payout: +$20 at 3rd runway, +$30 at 4th.
+fn payout_flat_bonus(fueled: u32) -> f32 {
+    if      fueled >= RUNWAY4_OPEN_AT { 30.0 }
+    else if fueled >= RUNWAY3_OPEN_AT { 20.0 }
+    else                              { 0.0 }
+}
+
+// Round x up to the next multiple of 5.
+fn round_up_to_5(x: f32) -> f32 {
+    (x / 5.0).ceil() * 5.0
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Airport Ramp Chaos".into(),
+                title: "Airport Chaos".into(),
                 resolution: (1024.0, 768.0).into(),
                 ..default()
             }),
@@ -349,23 +277,64 @@ fn setup(mut commands: Commands) {
 
     // ── Hangars: front-profile barrel-vault view ─────────────────────────────
     // Shows the recognisable arched silhouette + giant door opening.
-    let h_metal  = Color::srgb(0.62, 0.63, 0.67);
-    let h_shadow = Color::srgb(0.40, 0.41, 0.44);
-    let h_door   = Color::srgb(0.07, 0.07, 0.08);
-    let h_base   = Color::srgb(0.33, 0.34, 0.36);
+    let h_metal     = Color::srgb(0.62, 0.63, 0.67);
+    let h_highlight = Color::srgb(0.78, 0.79, 0.82);
+    let h_shadow    = Color::srgb(0.40, 0.41, 0.44);
+    let h_trim      = Color::srgb(0.82, 0.18, 0.12);
+    let h_door      = Color::srgb(0.10, 0.10, 0.12);
+    let h_door_pnl  = Color::srgb(0.20, 0.20, 0.22);
+    let h_base      = Color::srgb(0.33, 0.34, 0.36);
+    let h_window    = Color::srgb(0.95, 0.86, 0.40);
 
     for (cx, cy) in [(-s_hx, s_hy), (s_hx, s_hy), (-s_hx, -s_hy)] {
-        // Concrete base sill
-        commands.spawn((Sprite { color: h_base,  custom_size: Some(Vec2::new(92.0, 8.0)),  ..default() }, Transform::from_xyz(cx, cy - 32.0, 1.00)));
+        // Concrete base sill (wider, grounded)
+        commands.spawn((Sprite { color: h_base,  custom_size: Some(Vec2::new(98.0, 10.0)), ..default() }, Transform::from_xyz(cx, cy - 33.0, 1.00)));
         // Side walls flanking the door opening
-        commands.spawn((Sprite { color: h_shadow, custom_size: Some(Vec2::new(9.0, 28.0)), ..default() }, Transform::from_xyz(cx - 41.5, cy - 18.0, 1.01)));
-        commands.spawn((Sprite { color: h_shadow, custom_size: Some(Vec2::new(9.0, 28.0)), ..default() }, Transform::from_xyz(cx + 41.5, cy - 18.0, 1.01)));
+        commands.spawn((Sprite { color: h_shadow, custom_size: Some(Vec2::new(9.0, 30.0)), ..default() }, Transform::from_xyz(cx - 41.5, cy - 19.0, 1.01)));
+        commands.spawn((Sprite { color: h_shadow, custom_size: Some(Vec2::new(9.0, 30.0)), ..default() }, Transform::from_xyz(cx + 41.5, cy - 19.0, 1.01)));
         // Large door void — nearly full width
-        commands.spawn((Sprite { color: h_door,  custom_size: Some(Vec2::new(74.0, 28.0)), ..default() }, Transform::from_xyz(cx, cy - 18.0, 1.01)));
-        // Barrel-vault arch: 6 stacked rects narrow to the apex
-        for (i, &w) in [90.0_f32, 82.0, 72.0, 58.0, 40.0, 22.0].iter().enumerate() {
-            commands.spawn((Sprite { color: h_metal, custom_size: Some(Vec2::new(w, 5.0)), ..default() }, Transform::from_xyz(cx, cy - 4.0 + i as f32 * 5.0, 1.02 + i as f32 * 0.01)));
+        commands.spawn((Sprite { color: h_door,  custom_size: Some(Vec2::new(74.0, 30.0)), ..default() }, Transform::from_xyz(cx, cy - 19.0, 1.01)));
+        // Door panel dividers — 5 sliding-door panels
+        for dx in [-30.0_f32, -15.0, 0.0, 15.0, 30.0] {
+            commands.spawn((Sprite { color: h_door_pnl, custom_size: Some(Vec2::new(1.5, 30.0)), ..default() }, Transform::from_xyz(cx + dx, cy - 19.0, 1.02)));
         }
+        // Door bottom rail
+        commands.spawn((Sprite { color: h_door_pnl, custom_size: Some(Vec2::new(74.0, 2.0)), ..default() }, Transform::from_xyz(cx, cy - 33.0, 1.02)));
+        // Barrel-vault arch: 6 stacked rects narrow to the apex,
+        // alternating tones to read as corrugated metal
+        let arch = [90.0_f32, 82.0, 72.0, 58.0, 40.0, 22.0];
+        for (i, &w) in arch.iter().enumerate() {
+            let c = if i % 2 == 0 { h_metal } else { h_highlight };
+            commands.spawn((Sprite { color: c, custom_size: Some(Vec2::new(w, 5.0)), ..default() }, Transform::from_xyz(cx, cy - 1.5 + i as f32 * 5.0, 1.02 + i as f32 * 0.01)));
+        }
+        // Red trim stripe at the base of the arch (above door)
+        commands.spawn((Sprite { color: h_trim, custom_size: Some(Vec2::new(92.0, 2.0)), ..default() }, Transform::from_xyz(cx, cy - 3.5, 1.09)));
+        // Lit windows row above the door
+        for dx in [-26.0_f32, -13.0, 0.0, 13.0, 26.0] {
+            commands.spawn((Sprite { color: h_window, custom_size: Some(Vec2::new(7.0, 3.0)), ..default() }, Transform::from_xyz(cx + dx, cy - 5.5, 1.10)));
+        }
+    }
+
+    // ── Trees scattered through the left, right and bottom grass strips ─────
+    let tree_positions: &[(f32, f32)] = &[
+        // left grass (x <= -420, off the left vertical runway; y avoids horizontal runways at y ±190..±270)
+        (-470.0,  340.0), (-460.0,  150.0), (-445.0,   50.0),
+        (-485.0,  -50.0), (-490.0, -120.0), (-440.0, -315.0),
+        // right grass (x >= 420, off the right vertical runway)
+        ( 470.0,  340.0), ( 460.0,   60.0), ( 445.0,  150.0),
+        ( 485.0,  -50.0), ( 490.0, -130.0), ( 440.0, -315.0),
+        // bottom grass (y <= -290, below the bottom horizontal runway)
+        (-220.0, -340.0), ( -80.0, -360.0), (  90.0, -345.0), ( 240.0, -355.0),
+    ];
+    let trunk    = Color::srgb(0.32, 0.20, 0.10);
+    let leaf_lo  = Color::srgb(0.08, 0.42, 0.14);
+    let leaf_mid = Color::srgb(0.10, 0.55, 0.18);
+    let leaf_hi  = Color::srgb(0.18, 0.68, 0.24);
+    for &(x, y) in tree_positions {
+        commands.spawn((Sprite { color: trunk,   custom_size: Some(Vec2::new(5.0, 12.0)),  ..default() }, Transform::from_xyz(x, y - 8.0, 0.50)));
+        commands.spawn((Sprite { color: leaf_lo, custom_size: Some(Vec2::new(22.0, 12.0)), ..default() }, Transform::from_xyz(x, y - 1.0, 0.51)));
+        commands.spawn((Sprite { color: leaf_mid, custom_size: Some(Vec2::new(18.0, 12.0)), ..default() }, Transform::from_xyz(x, y + 7.0, 0.52)));
+        commands.spawn((Sprite { color: leaf_hi, custom_size: Some(Vec2::new(12.0, 10.0)), ..default() }, Transform::from_xyz(x, y + 14.0, 0.53)));
     }
 
     // ── ATC Tower (bottom-right): slender shaft, wide glass cab, control building
@@ -710,12 +679,15 @@ fn spawn_truck_with_state(
         2 => (26.0, 52.0, Color::srgb(0.97, 0.62, 0.08), Color::srgb(0.85, 0.42, 0.04)),
         3 => (28.0, 58.0, Color::srgb(0.92, 0.30, 0.08), Color::srgb(0.72, 0.18, 0.04)),
         4 => (30.0, 64.0, Color::srgb(0.65, 0.12, 0.80), Color::srgb(0.46, 0.06, 0.58)),
-        _ => (32.0, 70.0, Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
+        5 => (32.0, 70.0, Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
+        6 => (34.0, 76.0, Color::srgb(0.10, 0.78, 0.92), Color::srgb(0.05, 0.55, 0.70)),
+        7 => (36.0, 82.0, Color::srgb(0.96, 0.48, 0.82), Color::srgb(0.70, 0.20, 0.55)),
+        _ => (38.0, 88.0, Color::srgb(0.95, 0.80, 0.20), Color::srgb(0.78, 0.55, 0.08)),
     };
     let cab_h = 12.0_f32;
     let cab_y = th / 2.0 + cab_h / 2.0 + 1.0;
     commands.spawn((
-        FuelTruck { destination, speed: TRUCK_SPEEDS[level.min(5) as usize], fueling },
+        FuelTruck { destination, speed: TRUCK_SPEEDS[level.min(MAX_TRUCK_LEVEL) as usize], fueling },
         Sprite { color: tc, custom_size: Some(Vec2::new(tw, th)), ..default() },
         Transform::from_xyz(pos.x, pos.y, 2.0),
     )).with_children(|p| {
@@ -934,8 +906,8 @@ fn check_fueling(
                     ac.departing = true;
                     ac.speed     = 310.0;
 
-                    let bonus  = 1.0_f32;
-                    let earned = (base_value * bonus).round();
+                    let bonus  = payout_multiplier_for_progress(gs.planes_fueled);
+                    let earned = round_up_to_5(base_value * bonus) + payout_flat_bonus(gs.planes_fueled);
                     gs.money        += earned;
                     gs.last_payout   = earned;
                     gs.planes_fueled += 1;
@@ -1020,8 +992,8 @@ fn update_hud(
     if let Ok((mut text, mut color)) = lc_q.get_single_mut() {
         if gs.game_complete {
             *text  = Text::new(format!(
-                "CONGRATULATIONS!\nAirport Ramp Chaos - CLEARED!\n{} planes fueled   ${:.0} earned\n\nClick RESTART to play again",
-                WIN_PLANES, gs.money));
+                "CONGRATULATIONS!\nAirport Chaos - CLEARED!\n{} planes fueled",
+                WIN_PLANES));
             *color = TextColor(Color::srgba(1.0, 0.88, 0.12, 1.0)); // gold
         } else {
             *color = TextColor(Color::srgba(0.1, 1.0, 0.35, 0.0));
@@ -1032,10 +1004,9 @@ fn update_hud(
     }
     // Restart button also appears on game_complete so the player can play again
     if let Ok((mut vis, mut bg)) = restart_q.get_single_mut() {
-        if !gs.started {
-            *vis = Visibility::Visible; *bg = BackgroundColor(Color::srgb(0.1, 0.35, 0.9));
-        } else if gs.crashed || gs.game_complete {
-            *vis = Visibility::Visible; *bg = BackgroundColor(Color::srgb(0.1, 0.35, 0.9));
+        if !gs.started || gs.crashed || gs.game_complete {
+            *vis = Visibility::Visible;
+            *bg  = BackgroundColor(Color::srgb(0.1, 0.35, 0.9));
         } else {
             *vis = Visibility::Hidden;
         }
@@ -1063,18 +1034,18 @@ fn update_hud(
     }
     if let Ok(mut t) = truck_q.get_single_mut() {
         let lvl = gs.truck_level;
-        *t = Text::new(if lvl < 5 { format!("LV {}", lvl) } else { "MAX".into() });
+        *t = Text::new(if lvl < MAX_TRUCK_LEVEL { format!("LV {}", lvl) } else { "MAX".into() });
     }
 
     // ── Upgrade button text + affordability colour ─────────────────────────
     let lvl  = gs.truck_level;
-    let cost = if lvl < 5 { TRUCK_UPGRADE_COSTS[lvl as usize] } else { 0.0 };
+    let cost = if lvl < MAX_TRUCK_LEVEL { TRUCK_UPGRADE_COSTS[lvl as usize] } else { 0.0 };
 
     if let Ok(mut t) = upg_txt_q.get_single_mut() {
-        *t = Text::new(if lvl >= 5 { "MAX".into() } else { format!("${:.0}", cost) });
+        *t = Text::new(if lvl >= MAX_TRUCK_LEVEL { "MAX".into() } else { format!("${:.0}", cost) });
     }
     if let Ok(mut bg) = upg_btn_q.get_single_mut() {
-        *bg = BackgroundColor(if lvl >= 5 {
+        *bg = BackgroundColor(if lvl >= MAX_TRUCK_LEVEL {
             Color::srgb(0.28, 0.28, 0.30)
         } else if gs.money >= cost {
             Color::srgb(0.95, 0.55, 0.10)
@@ -1095,9 +1066,9 @@ fn update_hud(
 
 fn update_fuel_labels(
     gs: Res<GameState>,
-    mut fuel_txt_q:   Query<&mut TextColor, (With<TruckIconFuel>, Without<UpgTruckFuel>, Without<WorldTruckFuel>)>,
-    mut upg_fuel_q:   Query<&mut TextColor, (With<UpgTruckFuel>, Without<TruckIconFuel>, Without<WorldTruckFuel>)>,
-    mut world_fuel_q: Query<&mut TextColor, (With<WorldTruckFuel>, Without<TruckIconFuel>, Without<UpgTruckFuel>)>,
+    mut fuel_txt_q:   Query<&mut TextColor, TruckIconFuelFilter>,
+    mut upg_fuel_q:   Query<&mut TextColor, UpgTruckFuelFilter>,
+    mut world_fuel_q: Query<&mut TextColor, WorldTruckFuelFilter>,
 ) {
     if let Ok(mut tc) = fuel_txt_q.get_single_mut() {
         *tc = TextColor(truck_label_color(gs.truck_level));
@@ -1113,7 +1084,7 @@ fn update_fuel_labels(
 fn update_truck_label(
     gs: Res<GameState>,
     truck_q: Query<&Transform, With<FuelTruck>>,
-    mut label_q: Query<(&mut Transform, &mut TextColor), (With<PlaneCountText>, Without<FuelTruck>)>,
+    mut label_q: Query<(&mut Transform, &mut TextColor), TruckLabelFilter>,
 ) {
     let Ok(tf) = truck_q.get_single() else { return };
     let Ok((mut l, mut tc)) = label_q.get_single_mut() else { return };
@@ -1131,7 +1102,7 @@ fn handle_upgrades(
     tr_q:   Query<(Entity, &Transform, &FuelTruck)>,
     btn_q:  Query<&Interaction, With<TruckUpgradeButton>>,
 ) {
-    if gs.truck_level >= 5 { return; }
+    if gs.truck_level >= MAX_TRUCK_LEVEL { return; }
     let key_pressed = keys.just_pressed(KeyCode::KeyU);
     let btn_clicked = mouse.just_pressed(MouseButton::Left)
         && btn_q.get_single().map(|i| *i == Interaction::Pressed).unwrap_or(false);
