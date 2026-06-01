@@ -146,10 +146,10 @@ fn payout_multiplier_for_progress(fueled: u32) -> f32 {
     else                              { 1.0 }
 }
 
-// Flat bonus added on top of the scaled payout: +$20 at 3rd runway, +$30 at 4th.
+// Flat bonus added on top of the scaled payout: +$25 at 3rd runway, +$40 at 4th.
 fn payout_flat_bonus(fueled: u32) -> f32 {
-    if      fueled >= RUNWAY4_OPEN_AT { 30.0 }
-    else if fueled >= RUNWAY3_OPEN_AT { 20.0 }
+    if      fueled >= RUNWAY4_OPEN_AT { 40.0 }
+    else if fueled >= RUNWAY3_OPEN_AT { 25.0 }
     else                              { 0.0 }
 }
 

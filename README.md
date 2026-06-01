@@ -54,15 +54,15 @@ As runways open, payouts also scale up to keep the game profitable against the r
 
 ### Plane values
 
-Base payout is scaled by a multiplier (+5% at 3rd runway, +10.25% at 4th), rounded up to the nearest $5, then a flat per-plane bonus is added (+$20 at 3rd, +$30 at 4th).
+Base payout is scaled by a multiplier (+5% at 3rd runway, +10.25% at 4th), rounded up to the nearest $5, then a flat per-plane bonus is added (+$25 at 3rd, +$40 at 4th).
 
 | Color  | 1–2 runways | 3rd open | 4th open |
 | ------ | ----------: | -------: | -------: |
-| Azure  |         $60 |      $85 |     $100 |
-| Blue   |         $90 |     $115 |     $130 |
-| Yellow |        $120 |     $150 |     $165 |
-| Orange |        $150 |     $180 |     $200 |
-| Red    |        $175 |     $205 |     $225 |
+| Azure  |         $60 |      $90 |     $110 |
+| Blue   |         $90 |     $120 |     $140 |
+| Yellow |        $120 |     $155 |     $175 |
+| Orange |        $150 |     $185 |     $210 |
+| Red    |        $175 |     $210 |     $235 |
 
 ### Truck upgrades (8 levels, $500 → $4000)
 
