@@ -22,7 +22,7 @@ const RUNWAY_STANDS: [Vec2; 4] = [
 ];
 
 const TRUCK_UPGRADE_COSTS: [f32; 5]  = [500.0, 1000.0, 1500.0, 2000.0, 2500.0];
-const FUEL_DURATIONS: [f32; 6]       = [4.0, 3.5, 3.0, 2.5, 2.0, 1.5];
+const FUEL_DURATIONS: [f32; 6]       = [2.5, 2.2, 1.9, 1.6, 1.3, 1.0];
 const TRUCK_SPEEDS:    [f32; 6]      = [130.0, 155.0, 180.0, 210.0, 240.0, 275.0];
 const FUEL_RADIUS: f32 = 72.0;
 const TRUCK_START: Vec2 = Vec2::ZERO;
@@ -222,11 +222,11 @@ fn truck_next_level_colors(current: u32) -> (Color, Color) {
 // Label shown in HUD payout flash.
 fn plane_color_info(idx: u8) -> (Color, f32, &'static str) {
     match idx % 5 {
-        0 => (Color::srgb(0.22, 0.62, 0.88),  50.0, "Azure"),
-        1 => (Color::srgb(0.30, 0.65, 1.00),  75.0, "Blue"),
-        2 => (Color::srgb(1.00, 0.90, 0.10), 100.0, "Yellow"),
-        3 => (Color::srgb(1.00, 0.52, 0.05), 125.0, "Orange"),
-        _ => (Color::srgb(0.90, 0.15, 0.15), 150.0, "Red"),
+        0 => (Color::srgb(0.22, 0.62, 0.88),  60.0, "Azure"),
+        1 => (Color::srgb(0.30, 0.65, 1.00),  90.0, "Blue"),
+        2 => (Color::srgb(1.00, 0.90, 0.10), 120.0, "Yellow"),
+        3 => (Color::srgb(1.00, 0.52, 0.05), 150.0, "Orange"),
+        _ => (Color::srgb(0.90, 0.15, 0.15), 175.0, "Red"),
     }
 }
 
@@ -261,7 +261,6 @@ fn main() {
             spawn_fireworks,
             update_cursor_icon,
             update_fuel_labels,
-            update_world_fuel_label,
         ))
         .run();
 }
@@ -401,15 +400,6 @@ fn setup(mut commands: Commands) {
     commands.spawn((Sprite { color: Color::srgb(0.95, 0.10, 0.06), custom_size: Some(Vec2::new(6.0,  6.0)),  ..default() }, Transform::from_xyz(tx, ty + 65.5, 1.21)));
 
     spawn_truck(&mut commands, 0, TRUCK_START);
-
-    // Truck label
-    commands.spawn((
-        PlaneCountText, // reuse as truck label carrier — actually use a separate entity
-        Text2d::new("FUEL"),
-        TextFont { font_size: 7.5, ..default() },
-        TextColor(truck_label_color(0)),
-        Transform::from_xyz(TRUCK_START.x, TRUCK_START.y + 20.0, 5.0),
-    ));
 
     // ── UI ─────────────────────────────────────────────────────────────────
     let center = Node {
@@ -707,19 +697,25 @@ fn spawn_aircraft(commands: &mut Commands, runway: u32, color_idx: u8, will_coll
     });
 }
 
-fn spawn_truck(commands: &mut Commands, level: u32, pos: Vec2) {
+fn spawn_truck_with_state(
+    commands: &mut Commands,
+    level: u32,
+    pos: Vec2,
+    destination: Option<Vec2>,
+    fueling: bool,
+) {
     let (tw, th, tc, cc) = match level {
-        0 => (22.0_f32, 28.0_f32, Color::srgb(0.72, 0.74, 0.76), Color::srgb(0.95, 0.76, 0.05)),
-        1 => (24.0, 33.0, Color::srgb(0.96, 0.88, 0.18), Color::srgb(0.90, 0.70, 0.05)),
-        2 => (26.0, 38.0, Color::srgb(0.97, 0.62, 0.08), Color::srgb(0.85, 0.42, 0.04)),
-        3 => (28.0, 43.0, Color::srgb(0.92, 0.30, 0.08), Color::srgb(0.72, 0.18, 0.04)),
-        4 => (30.0, 48.0, Color::srgb(0.65, 0.12, 0.80), Color::srgb(0.46, 0.06, 0.58)),
-        _ => (32.0, 54.0, Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
+        0 => (22.0_f32, 40.0_f32, Color::srgb(0.72, 0.74, 0.76), Color::srgb(0.95, 0.76, 0.05)),
+        1 => (24.0, 46.0, Color::srgb(0.96, 0.88, 0.18), Color::srgb(0.90, 0.70, 0.05)),
+        2 => (26.0, 52.0, Color::srgb(0.97, 0.62, 0.08), Color::srgb(0.85, 0.42, 0.04)),
+        3 => (28.0, 58.0, Color::srgb(0.92, 0.30, 0.08), Color::srgb(0.72, 0.18, 0.04)),
+        4 => (30.0, 64.0, Color::srgb(0.65, 0.12, 0.80), Color::srgb(0.46, 0.06, 0.58)),
+        _ => (32.0, 70.0, Color::srgb(0.08, 0.88, 0.32), Color::srgb(0.04, 0.58, 0.20)),
     };
     let cab_h = 12.0_f32;
     let cab_y = th / 2.0 + cab_h / 2.0 + 1.0;
     commands.spawn((
-        FuelTruck { destination: None, speed: TRUCK_SPEEDS[level.min(5) as usize], fueling: false },
+        FuelTruck { destination, speed: TRUCK_SPEEDS[level.min(5) as usize], fueling },
         Sprite { color: tc, custom_size: Some(Vec2::new(tw, th)), ..default() },
         Transform::from_xyz(pos.x, pos.y, 2.0),
     )).with_children(|p| {
@@ -732,20 +728,21 @@ fn spawn_truck(commands: &mut Commands, level: u32, pos: Vec2) {
         ));
         // Rear bumper
         p.spawn((Sprite { color: Color::srgb(0.25, 0.25, 0.27), custom_size: Some(Vec2::new(5.0, 5.0)), ..default() }, Transform::from_xyz(0.0, -(th / 2.0 + 3.0), 0.1)));
-        // Highlight band
-        p.spawn((Sprite { color: Color::srgba(1.0, 1.0, 1.0, 0.25), custom_size: Some(Vec2::new(tw, 4.0)), ..default() }, Transform::from_xyz(0.0, 4.0, 0.05)));
+        // "FUEL" label — painted on the tank, rotates with the truck.
+        // Vertical orientation so larger text fits within the tank width.
+        p.spawn((
+            WorldTruckFuel,
+            Text2d::new("F\nU\nE\nL"),
+            TextFont { font_size: 7.0, ..default() },
+            TextColor(truck_label_color(level)),
+            TextLayout::new_with_justify(JustifyText::Center),
+            Transform::from_xyz(0.0, 0.0, 0.15),
+        ));
     });
+}
 
-    // "FUEL" label — standalone (not parented) so it never rotates with the truck.
-    // Vertical orientation, runs along the tank from front to back.
-    commands.spawn((
-        WorldTruckFuel,
-        Text2d::new("F\nU\nE\nL"),
-        TextFont { font_size: 13.0, ..default() },
-        TextColor(truck_label_color(level)),
-        TextLayout::new_with_justify(JustifyText::Center),
-        Transform::from_xyz(pos.x, pos.y, 3.0),
-    ));
+fn spawn_truck(commands: &mut Commands, level: u32, pos: Vec2) {
+    spawn_truck_with_state(commands, level, pos, None, false);
 }
 
 
@@ -1096,17 +1093,6 @@ fn update_hud(
     if let Ok(mut bg) = upg_cab_q.get_single_mut()   { *bg = BackgroundColor(upg_c); }
 }
 
-fn update_world_fuel_label(
-    truck_q: Query<&Transform, (With<FuelTruck>, Without<WorldTruckFuel>)>,
-    mut fuel_q: Query<&mut Transform, (With<WorldTruckFuel>, Without<FuelTruck>)>,
-) {
-    let Ok(truck_tf) = truck_q.get_single() else { return };
-    let Ok(mut fuel_tf) = fuel_q.get_single_mut() else { return };
-    fuel_tf.translation.x = truck_tf.translation.x;
-    fuel_tf.translation.y = truck_tf.translation.y;
-    fuel_tf.rotation = Quat::IDENTITY;
-}
-
 fn update_fuel_labels(
     gs: Res<GameState>,
     mut fuel_txt_q:   Query<&mut TextColor, (With<TruckIconFuel>, Without<UpgTruckFuel>, Without<WorldTruckFuel>)>,
@@ -1142,8 +1128,7 @@ fn handle_upgrades(
     mouse: Res<ButtonInput<MouseButton>>,
     mut gs: ResMut<GameState>,
     mut commands: Commands,
-    tr_q:   Query<(Entity, &Transform), With<FuelTruck>>,
-    fuel_q: Query<Entity, With<WorldTruckFuel>>,
+    tr_q:   Query<(Entity, &Transform, &FuelTruck)>,
     btn_q:  Query<&Interaction, With<TruckUpgradeButton>>,
 ) {
     if gs.truck_level >= 5 { return; }
@@ -1156,11 +1141,12 @@ fn handle_upgrades(
     if gs.money >= cost {
         gs.money -= cost;
         gs.truck_level += 1;
-        if let Ok((entity, tf)) = tr_q.get_single() {
+        if let Ok((entity, tf, truck)) = tr_q.get_single() {
             let pos = tf.translation.truncate();
+            let dest = truck.destination;
+            let fueling = truck.fueling;
             commands.entity(entity).despawn_recursive();
-            for e in &fuel_q { commands.entity(e).despawn_recursive(); }
-            spawn_truck(&mut commands, gs.truck_level, pos);
+            spawn_truck_with_state(&mut commands, gs.truck_level, pos, dest, fueling);
         }
     }
 }
@@ -1171,7 +1157,6 @@ fn handle_restart(
     mut commands: Commands,
     ac_q:        Query<Entity, With<Aircraft>>,
     tr_q:        Query<Entity, With<FuelTruck>>,
-    fuel_q:      Query<Entity, With<WorldTruckFuel>>,
     particle_q:  Query<Entity, With<Particle>>,
     mut bar_q:   Query<(&RunwayFuelBar, &mut Sprite, &mut Visibility)>,
     btn_q:       Query<&Interaction, With<RestartButton>>,
@@ -1192,7 +1177,6 @@ fn handle_restart(
         // Crash restart — full reset but keep game started
         for e in &ac_q       { commands.entity(e).despawn_recursive(); }
         for e in &tr_q       { commands.entity(e).despawn_recursive(); }
-        for e in &fuel_q     { commands.entity(e).despawn_recursive(); }
         for e in &particle_q { commands.entity(e).despawn_recursive(); }
 
         *gs = GameState::default();

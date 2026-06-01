@@ -54,19 +54,20 @@ When a runway opens, its center-line dashes turn **yellow** and its parking-stan
 
 | Color  | Payout |
 | ------ | -----: |
-| Azure  |    $50 |
-| Blue   |    $75 |
-| Yellow |   $100 |
-| Orange |   $125 |
-| Red    |   $150 |
+| Azure  |    $60 |
+| Blue   |    $90 |
+| Yellow |   $120 |
+| Orange |   $150 |
+| Red    |   $175 |
 
 ### Truck upgrades (5 levels, $500 → $2500)
 
 Each upgrade:
 
 - Increases truck **movement speed** (130 → 275 px/s)
-- Decreases **fueling time** (4.0 → 1.5 s per plane)
+- Decreases **fueling time** (2.5 → 1.0 s per plane)
 - Changes the truck's **color and size** (gray → yellow → orange → red → purple → green)
+- Preserves the truck's current destination and active fueling — a moving or fueling truck keeps doing its job through the upgrade
 
 ### Win / Lose
 
@@ -104,25 +105,32 @@ Each upgrade:
 - [x] Continuous play to **50 planes** (no discrete levels)
 - [x] Four runways with progressive activation at 10 and 20 fueled
 - [x] Spawn interval tightens as the player progresses
-- [x] Truck upgrades (5 tiers) — faster movement + faster fueling
+- [x] Truck upgrades (5 tiers) — faster movement + faster fueling, state-preserving (destination + fueling carry through)
 - [x] Partial fueling persists on the aircraft when the truck is redirected
 - [x] Crashes between taxiing and parked aircraft (with the truck caught in between)
 - [x] Win screen with continuous fireworks
-- [x] Visual polish — windshield + side windows, vertical "FUEL" label that never rotates, contrast-tuned label color (red/yellow), pointer cursor on UI hover, distinct orange upgrade button, "COMING SOON" markers on inactive runways
+- [x] Visual polish — windshield + side windows, vertical "FUEL" label painted on the tank (rotates with the truck), contrast-tuned label color (red/yellow), pointer cursor on UI hover, distinct orange upgrade button, "COMING SOON" markers on inactive runways
 - [x] UI clicks no longer redirect the truck
 
 ---
 
 ## Phase 4 — Refactor & Performance (Planned, Final Phase)
 
-- [ ] Split `main.rs` into modules (`hud`, `truck`, `aircraft`, `runway`, `state`, `setup`)
-- [ ] Replace marker-component `Without<>` filter chains with system sets or `ParamSet`
-- [ ] Extract magic numbers into named constants grouped by concern
-- [ ] Replace the polled spawn loop with a more idiomatic timer-per-runway resource
-- [ ] Audit for unnecessary `Query` iteration each frame; cache where appropriate
-- [ ] Profile and tighten the particle update path
-- [ ] Reduce per-frame allocations in HUD text updates
-- [ ] General code-quality pass — naming, function size, comments where intent isn't obvious
+**Ground rule: no change in Phase 4 may alter gameplay, balance, visuals, or behavior. If a refactor carries any risk of breaking something, it is skipped.** Phase 4 is a code-quality and organization pass only.
+
+- [ ] Split `main.rs` into modules (`hud`, `truck`, `aircraft`, `runway`, `state`, `setup`) — pure code-motion, no logic change
+- [ ] Group existing magic numbers into named constants beside their current use sites
+- [ ] Remove dead code and unused imports surfaced by the compiler
+- [ ] Consolidate duplicated `Without<>` filter chains where it is a mechanical rewrite
+- [ ] General readability pass — naming and function size only; no algorithmic changes
+- [ ] `cargo check` and a manual play-through must pass after every individual change
+
+Explicitly **out of scope** for Phase 4 (deferred or dropped):
+
+- Re-architecting the spawn loop or any system ordering
+- Replacing `Query` patterns with `ParamSet` unless the rewrite is purely mechanical and risk-free
+- Particle system rewrites
+- Any change to the HUD update path that alters what is rendered
 
 ---
 
